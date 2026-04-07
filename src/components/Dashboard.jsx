@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus, TrendingUp, TrendingDown, Wallet,
-  ArrowUpRight, LayoutDashboard, ArrowLeftRight,
+  ArrowUpRight, LayoutDashboard, ArrowLeftRight, CreditCard
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
@@ -11,6 +11,9 @@ import {
 import TransactionFilters from './transactions/TransactionFilters';
 import TransactionForm    from './transactions/TransactionForm';
 import TransactionList   from './transactions/TransactionList';
+import CardList from './cards/CardList';
+import CardForm from './cards/CardForm';
+import CardInvoice from './cards/CardInvoice';
 
 /* ─── Summary Card ────────────────────────────────────────────── */
 const SummaryCard = ({ title, value, icon: Icon, gradient, sub }) => (
@@ -224,6 +227,40 @@ const TransactionsPage = ({ transactions, loading, month, year, onMonthChange, f
   );
 };
 
+/* ─── Cards Page ──────────────────────────────────────────────── */
+const CardsPage = ({ cards, loading, onNewCard, onEdit, onDelete, onOpenInvoice }) => {
+  return (
+    <div className="p-6 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">
+            <CreditCard size={13} />
+            <span>Meus Cartões</span>
+          </div>
+          <h2 className="text-xl font-bold text-white">Cartões de Crédito</h2>
+        </div>
+        <button
+          onClick={onNewCard}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 transition-colors"
+        >
+          <Plus size={16} />
+          Novo Cartão
+        </button>
+      </div>
+
+      <CardList
+        cards={cards}
+        loading={loading}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onNewCard={onNewCard}
+        onOpenInvoice={onOpenInvoice}
+      />
+    </div>
+  );
+};
+
 /* ─── Main Dashboard Orchestrator ─────────────────────────────── */
 const Dashboard = ({ session, activePage, onNavigate }) => {
   const now = new Date();
@@ -234,6 +271,13 @@ const Dashboard = ({ session, activePage, onNavigate }) => {
   const [filter,       setFilter]       = useState({ type: 'all', category: '' });
   const [showForm,     setShowForm]     = useState(false);
   const [editing,      setEditing]      = useState(null);
+
+  // Cards State
+  const [cards, setCards] = useState([]);
+  const [loadingCards, setLoadingCards] = useState(true);
+  const [showCardForm, setShowCardForm] = useState(false);
+  const [editingCard, setEditingCard] = useState(null);
+  const [invoiceCard, setInvoiceCard] = useState(null);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -254,7 +298,48 @@ const Dashboard = ({ session, activePage, onNavigate }) => {
     }
   }, [session.user.id, month, year]);
 
-  useEffect(() => { fetchTransactions(); }, [fetchTransactions]);
+  const fetchCards = useCallback(async () => {
+    try {
+      setLoadingCards(true);
+      const { data: cardsData, error: cardsError } = await supabase
+        .from('credit_cards')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
+      if (cardsError) throw cardsError;
+
+      // Get current month date range to calculate spend
+      const today = new Date();
+      const firstDay = getFirstDayOfMonth(today.getMonth() + 1, today.getFullYear());
+      const lastDay = getLastDayOfMonth(today.getMonth() + 1, today.getFullYear());
+
+      const { data: txData, error: txError } = await supabase
+        .from('transactions')
+        .select('credit_card_id, amount')
+        .eq('user_id', session.user.id)
+        .gte('date', firstDay)
+        .lte('date', lastDay)
+        .not('credit_card_id', 'is', null);
+
+      const cardsWithSpend = (cardsData || []).map(card => {
+        const spent = (txData || [])
+          .filter(t => t.credit_card_id === card.id)
+          .reduce((sum, t) => sum + Number(t.amount), 0);
+        return { ...card, currentSpend: spent };
+      });
+
+      setCards(cardsWithSpend);
+    } catch (err) {
+      console.error('Erro ao carregar cartões:', err.message);
+    } finally {
+      setLoadingCards(false);
+    }
+  }, [session.user.id]);
+
+  useEffect(() => { 
+    fetchTransactions(); 
+    fetchCards();
+  }, [fetchTransactions, fetchCards]);
 
   const handleMonthChange = (m, y) => {
     setMonth(m);
@@ -272,6 +357,19 @@ const Dashboard = ({ session, activePage, onNavigate }) => {
       await fetchTransactions();
     } catch (err) {
       alert('Erro ao excluir: ' + err.message);
+    }
+  };
+
+  const handleEditCard = (card) => { setEditingCard(card); setShowCardForm(true); };
+  
+  const handleDeleteCard = async (id) => {
+    if (!confirm('Excluir este cartão? As transações vinculadas podem perder a referência ao limite.')) return;
+    try {
+      const { error } = await supabase.from('credit_cards').delete().eq('id', id);
+      if (error) throw error;
+      await fetchCards();
+    } catch (err) {
+      alert('Erro ao excluir cartão: ' + err.message);
     }
   };
 
@@ -303,12 +401,40 @@ const Dashboard = ({ session, activePage, onNavigate }) => {
         />
       )}
 
+      {activePage === 'cards' && !invoiceCard && (
+        <CardsPage
+          cards={cards}
+          loading={loadingCards}
+          onNewCard={() => { setEditingCard(null); setShowCardForm(true); }}
+          onEdit={handleEditCard}
+          onDelete={handleDeleteCard}
+          onOpenInvoice={setInvoiceCard}
+        />
+      )}
+
+      {activePage === 'cards' && invoiceCard && (
+        <CardInvoice 
+           card={invoiceCard} 
+           session={session} 
+           onClose={() => setInvoiceCard(null)} 
+        />
+      )}
+
       <TransactionForm
         isOpen={showForm}
         onClose={closeForm}
         onSaved={fetchTransactions}
         session={session}
         editing={editing}
+        cards={cards}
+      />
+
+      <CardForm
+        isOpen={showCardForm}
+        onClose={() => { setShowCardForm(false); setEditingCard(null); }}
+        onSaved={fetchCards}
+        session={session}
+        editing={editingCard}
       />
     </>
   );

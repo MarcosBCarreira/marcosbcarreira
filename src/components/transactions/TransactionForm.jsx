@@ -8,18 +8,28 @@ const BLANK = {
   description: '',
   amount: '',
   type: 'expense',
+  is_credit: false,
+  credit_card_id: '',
   category: '',
   date: new Date().toISOString().split('T')[0],
 };
 
-const TransactionForm = ({ isOpen, onClose, onSaved, session, editing }) => {
+const TransactionForm = ({ isOpen, onClose, onSaved, session, editing, cards }) => {
   const [form, setForm]       = useState(BLANK);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setForm(editing
-      ? { description: editing.description, amount: String(editing.amount), type: editing.type, category: editing.category, date: editing.date }
+      ? { 
+          description: editing.description, 
+          amount: String(editing.amount), 
+          type: editing.type, 
+          category: editing.category, 
+          date: editing.date,
+          is_credit: !!editing.credit_card_id,
+          credit_card_id: editing.credit_card_id || '',
+        }
       : BLANK
     );
   }, [editing, isOpen]);
@@ -32,12 +42,25 @@ const TransactionForm = ({ isOpen, onClose, onSaved, session, editing }) => {
 
   const handleSubmit = async () => {
     if (!form.description.trim() || !form.amount || !form.category) {
-      alert('Preencha todos os campos obrigatórios.');
+      alert('Preencha os campos obrigatórios.');
+      return;
+    }
+    if (form.is_credit && !form.credit_card_id) {
+      alert('Selecione um cartão de crédito.');
       return;
     }
     setLoading(true);
     try {
-      const payload = { ...form, amount: parseFloat(form.amount), user_id: session.user.id };
+      const payload = { 
+        description: form.description,
+        amount: parseFloat(form.amount),
+        type: form.type,
+        category: form.category,
+        date: form.date,
+        credit_card_id: form.is_credit ? form.credit_card_id : null,
+        user_id: session.user.id 
+      };
+      
       const { error } = editing
         ? await supabase.from('transactions').update(payload).eq('id', editing.id)
         : await supabase.from('transactions').insert([payload]);
@@ -58,21 +81,25 @@ const TransactionForm = ({ isOpen, onClose, onSaved, session, editing }) => {
       <div className="space-y-5">
 
         {/* Type Toggle */}
-        <div className="grid grid-cols-2 bg-slate-800 rounded-xl p-1 gap-1">
+        <div className="grid grid-cols-3 bg-slate-800 rounded-xl p-1 gap-1">
           {[
-            { value: 'expense', label: '↘ Saída',   active: 'bg-rose-600 shadow-lg shadow-rose-600/20'    },
-            { value: 'income',  label: '↗ Entrada',  active: 'bg-emerald-600 shadow-lg shadow-emerald-600/20' },
-          ].map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => handleTypeChange(opt.value)}
-              className={`py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                form.type === opt.value ? `${opt.active} text-white` : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+            { id: 'expense', is_credit: false, label: '↘ Débito', active: 'bg-rose-600 shadow-lg shadow-rose-600/20' },
+            { id: 'credit',  is_credit: true,  label: '💳 Crédito', active: 'bg-amber-500 shadow-lg shadow-amber-500/20' },
+            { id: 'income',  is_credit: false, label: '↗ Entrada', active: 'bg-emerald-600 shadow-lg shadow-emerald-600/20' },
+          ].map((opt) => {
+            const isActive = form.type === (opt.id === 'credit' ? 'expense' : opt.id) && form.is_credit === opt.is_credit;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => setForm(f => ({ ...f, type: opt.id === 'credit' ? 'expense' : opt.id, is_credit: opt.is_credit, credit_card_id: opt.is_credit ? f.credit_card_id : '', category: '' }))}
+                className={`py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
+                  isActive ? `${opt.active} text-white` : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Description */}
@@ -86,6 +113,21 @@ const TransactionForm = ({ isOpen, onClose, onSaved, session, editing }) => {
             className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 text-sm placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
         </div>
+
+        {/* Credit Card Selector */}
+        {form.is_credit && (
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wide">Cartão de Crédito *</label>
+            <select
+              value={form.credit_card_id}
+              onChange={(e) => set('credit_card_id', e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 text-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+            >
+              <option value="">Selecione um cartão</option>
+              {cards?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           {/* Amount */}

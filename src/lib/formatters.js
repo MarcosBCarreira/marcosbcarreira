@@ -29,10 +29,10 @@ export const getLastDayOfMonth = (month, year) => {
 };
 
 export const ALL_CATEGORIES = {
-  income: ['Salário', 'Freelance', 'Investimentos', 'Bônus', 'Outros'],
+  income: ['Salário', 'Proventos', 'Investimentos', 'Outros'],
   expense: [
-    'Alimentação', 'Transporte', 'Moradia', 'Saúde',
-    'Lazer', 'Educação', 'Vestuário', 'Assinaturas', 'Outros',
+    'Alimentação', 'Transporte', 'Moradia', 'Saúde', 'Mercado', 'Restaurantes', 'Delivery', 'Padaria',
+    'Lazer', 'Educação', 'Vestuário', 'Assinaturas', 'Impostos', 'Outros',
   ],
 };
 

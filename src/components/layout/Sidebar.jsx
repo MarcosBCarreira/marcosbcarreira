@@ -8,7 +8,7 @@ import { supabase } from '../../lib/supabase';
 const NAV_ITEMS = [
   { id: 'dashboard',    label: 'Dashboard',   icon: LayoutDashboard },
   { id: 'transactions', label: 'Transações',  icon: ArrowLeftRight },
-  { id: 'cards',        label: 'Cartões',     icon: CreditCard,  soon: true },
+  { id: 'cards',        label: 'Cartões',     icon: CreditCard },
   { id: 'accounts',     label: 'Contas',      icon: Wallet,      soon: true },
   { id: 'reports',      label: 'Relatórios',  icon: BarChart3,   soon: true },
   { id: 'goals',        label: 'Metas',       icon: Target,      soon: true },
